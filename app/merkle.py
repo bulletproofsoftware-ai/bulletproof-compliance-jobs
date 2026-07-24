@@ -50,10 +50,16 @@ def _read_audit_events(period_start: str, period_end: str) -> tuple[list[dict[st
                 table = "audit_events" if "audit_events" in tables else "forensic_events" if "forensic_events" in tables else None
                 if not table:
                     continue
-                cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
+                # `table` is chosen from the fixed set {audit_events, forensic_events}
+                # above; the time window is passed as bind parameters. No user input.
+                cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
                 ts_col = "timestamp" if "timestamp" in cols else "created_at"
+                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,configs.sql-string-concatenation-python
+                # `table` and `ts_col` are whitelisted identifiers (not bindable in
+                # SQLite); the actual period values are passed as ? bind parameters.
                 rows = conn.execute(
-                    f"SELECT * FROM {table} WHERE {ts_col} >= ? AND {ts_col} < ? ORDER BY {ts_col} ASC",
+                    f"SELECT * FROM {table} WHERE {ts_col} >= ? AND {ts_col} < ? ORDER BY {ts_col} ASC",  # noqa: S608
                     (period_start, period_end),
                 ).fetchall()
                 for r in rows:

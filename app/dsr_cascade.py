@@ -95,12 +95,18 @@ def _audit_db_count_references(subject_id: str) -> int:
                 table = "audit_events" if "audit_events" in tables else "forensic_events" if "forensic_events" in tables else None
                 if not table:
                     continue
-                cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
+                # `table` is chosen from the fixed set {audit_events, forensic_events}.
+                cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
                 payload_col = "payload_json" if "payload_json" in cols else None
                 if not payload_col:
                     continue
+                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,configs.sql-string-concatenation-python
+                # `table` and `payload_col` are whitelisted schema identifiers
+                # (not bindable in SQLite); `subject_id` is passed as a ? bind
+                # parameter inside the LIKE pattern — no interpolation of user input.
                 row = c.execute(
-                    f"SELECT COUNT(*) AS n FROM {table} WHERE {payload_col} LIKE ?",
+                    f"SELECT COUNT(*) AS n FROM {table} WHERE {payload_col} LIKE ?",  # noqa: S608
                     (f'%"{subject_id}"%',),
                 ).fetchone()
                 total += int(row["n"]) if row else 0

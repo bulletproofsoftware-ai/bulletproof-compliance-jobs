@@ -124,11 +124,16 @@ def _enforce_audit_db(db_path: Path, cutoff_iso: str, holds: list[str]) -> dict[
         if not table:
             return {"db": str(db_path), "skipped": True, "reason": "no audit table"}
 
-        cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+        # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
+        # `table` is chosen from the fixed set {audit_events, forensic_events}.
+        cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
         ts_col = "timestamp" if "timestamp" in cols else "created_at"
 
-        # Identify candidates older than cutoff and not under legal hold
-        sql = f"SELECT * FROM {table} WHERE {ts_col} < ?"
+        # Identify candidates older than cutoff and not under legal hold.
+        # nosemgrep: configs.sql-string-concatenation-python
+        # `table`/`ts_col` are whitelisted identifiers (not bindable in SQLite);
+        # `cutoff_iso` is passed as a ? bind parameter below.
+        sql = f"SELECT * FROM {table} WHERE {ts_col} < ?"  # noqa: S608
         rows = c.execute(sql, (cutoff_iso,)).fetchall()
         archived = []
         held = []
@@ -155,8 +160,12 @@ def _enforce_audit_db(db_path: Path, cutoff_iso: str, holds: list[str]) -> dict[
                     cannot_delete = True
                 else:
                     placeholders = ",".join("?" * len(ids))
+                    # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,configs.sql-string-concatenation-python
+                    # `table` is a whitelisted identifier; `placeholders` is a
+                    # generated string of `?` marks only — every id value is passed
+                    # via the `ids` bind-parameter list, never interpolated.
                     cur = c.execute(
-                        f"DELETE FROM {table} WHERE event_id IN ({placeholders})",
+                        f"DELETE FROM {table} WHERE event_id IN ({placeholders})",  # noqa: S608
                         ids)
                     deleted = cur.rowcount or 0
                     c.commit()

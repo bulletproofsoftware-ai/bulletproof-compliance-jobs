@@ -130,7 +130,11 @@ _ADDITIVE_COLUMNS = (
 
 
 def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,configs.sql-string-concatenation-python
+    # `table` is never user input: it originates only from the hardcoded
+    # `_ADDITIVE_COLUMNS` tuple in this module. SQLite has no bind parameter
+    # for identifiers, so the table name must be interpolated. No injection path.
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
     return {r["name"] for r in rows}
 
 
@@ -156,7 +160,11 @@ def _apply_additive_migrations(conn: sqlite3.Connection) -> None:
         existing = _existing_columns(conn, table)
         for column, coltype in cols:
             if column not in existing:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,configs.sql-string-concatenation-python
+                # `table`, `column`, `coltype` come exclusively from the
+                # hardcoded `_ADDITIVE_COLUMNS` tuple above — never user input.
+                # SQLite cannot bind DDL identifiers, so interpolation is required.
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")  # noqa: S608
 
 
 def init() -> None:

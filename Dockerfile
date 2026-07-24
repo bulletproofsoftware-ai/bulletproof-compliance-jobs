@@ -9,6 +9,13 @@ COPY app /app/app
 COPY tests /app/tests
 COPY migrations /app/migrations
 
+# Run as an unprivileged user. Create the state dir up front and hand both the
+# app tree and the state volume to `appuser` so the service never runs as root.
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /state \
+    && chown -R appuser:appuser /app /state
+USER appuser
+
 EXPOSE 8087
 
 ENV SQLITE_PATH=/state/compliance_jobs.sqlite
