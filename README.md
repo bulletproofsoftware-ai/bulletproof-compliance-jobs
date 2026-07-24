@@ -7,6 +7,8 @@ it enforces retention policies, cascades Data Subject Requests (DSR) across data
 stores, and produces tamper-evident audit reports using a Merkle-chained, signed
 log. It's a FastAPI service backed by Postgres.
 
+> 📚 Full documentation in [`docs/`](docs/) · 🔒 security scan in [`docs/scan/scan-report.md`](docs/scan/scan-report.md). (System-overview media coming soon.)
+
 ## What it does
 
 - **Retention** — applies configurable retention policies and purges expired data.
