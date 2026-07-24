@@ -21,7 +21,7 @@ log. It's a FastAPI service backed by Postgres.
 ```bash
 pip install -r requirements.txt
 # apply migrations, then:
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+uvicorn app.main:app --host 0.0.0.0 --port 8087
 ```
 
 Or via Docker (`Dockerfile` included). Postgres connection is configured via env —
