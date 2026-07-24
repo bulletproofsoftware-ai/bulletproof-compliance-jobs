@@ -66,16 +66,14 @@ def _gather_evidence(period_start: str, period_end: str) -> dict[str, Any]:
                 table = "audit_events" if "audit_events" in tables else "forensic_events" if "forensic_events" in tables else None
                 if not table:
                     continue
-                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
                 # `table` is chosen from the fixed set {audit_events, forensic_events};
                 # no user input reaches the identifier.
-                cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
+                cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608  # nosemgrep
                 ts_col = "timestamp" if "timestamp" in cols else "created_at"
-                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,configs.sql-string-concatenation-python
                 # `table`/`ts_col` are whitelisted identifiers (SQLite can't bind them);
                 # the period bounds are passed as ? bind parameters.
-                rows = c.execute(
-                    f"SELECT event_type, COUNT(*) AS n FROM {table} "  # noqa: S608
+                rows = c.execute(  # noqa: S608  # nosemgrep
+                    f"SELECT event_type, COUNT(*) AS n FROM {table} "
                     f"WHERE {ts_col} BETWEEN ? AND ? GROUP BY event_type",
                     (period_start, period_end),
                 ).fetchall()
