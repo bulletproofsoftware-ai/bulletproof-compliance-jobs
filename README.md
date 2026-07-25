@@ -9,7 +9,7 @@ it enforces retention policies, cascades Data Subject Requests (DSR) across data
 stores, and produces tamper-evident audit reports using a Merkle-chained, signed
 log. It's a FastAPI service backed by SQLite.
 
-> 📚 Full documentation in [`docs/`](docs/) · 🔒 security scan in [`docs/scan/scan-report.md`](docs/scan/scan-report.md) · 🎬 System overview: [briefing](media/system-overview.md).
+> 📚 Full documentation in [`docs/`](docs/) · 🔒 security scan in [`docs/scan/scan-report.md`](docs/scan/scan-report.md) · 🎬 System overview: [briefing](media/system-overview.md) · [video](media/system-overview.mp4).
 
 ## What it does
 
