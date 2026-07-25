@@ -8,8 +8,8 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
       - name: Install dependencies
@@ -20,11 +20,7 @@ jobs:
       - name: Syntax check (compile all Python)
         run: |
           python -m compileall -q $(git ls-files '*.py') || python -m compileall -q .
-      - name: Tests (if present, non-blocking on missing services)
+      - name: Tests
         run: |
-          if [ -d tests ] || ls test_*.py *_test.py 2>/dev/null | grep -q .; then
-            pip install pytest 2>/dev/null || true
-            pytest -q || echo "::warning::pytest reported failures (may require external services)"
-          else
-            echo "no tests directory — skipping"
-          fi
+          pip install pytest
+          python -m pytest -q

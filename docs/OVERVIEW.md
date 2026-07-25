@@ -16,7 +16,7 @@ signs, and reports on it.
 | Capability | What runs | Backing code |
 |---|---|---|
 | **Merkle audit chain** | Hourly job hashes each audit event into a leaf, builds a Merkle tree, chains the new root to the previous one, and signs it (Ed25519). | `app/merkle.py` |
-| **Retention enforcement** | Periodic job archives records past their retention horizon to compressed JSONL, then deletes them from source — unless a legal hold is active. | `app/retention.py`, `app/retention_policy.py` |
+| **Retention enforcement** | Periodic job archives records past their retention horizon to compressed JSONL, then deletes them from source — unless a legal hold is active. | `app/retention.py` |
 | **DSR cascade** | On request, purges a subject's data across Qdrant collections and evidence files, then writes a signed deletion-confirmation artifact. Audit references are counted, never deleted (immutable trail). | `app/dsr_cascade.py` |
 | **Regulatory reports** | Generates signed JSON evidence packages (SOX, NY DFS Part 500, EU AI Act, NAIC adverse-action). Annual reports auto-fire on a schedule; all can be triggered on demand. | `app/reports.py` |
 | **NAIC adverse-action listener** | Polls the audit databases for adverse-action events (policy denials, threat detections, guardian actions) and auto-generates a NAIC artifact per new event, idempotently. | `app/main.py` |
@@ -87,9 +87,8 @@ walks the chain to detect any break.
   databases read-only.
 - It does not implement the compliance portal or the governance engine that
   *produce* audit events — it reacts to them.
-- Postgres/n8n retention classes are declared in `app/retention_policy.py` as the
-  policy table; the enforcement loop in `app/retention.py` implements the SQLite
-  audit-DB path. Classes whose backing store is unset or unreachable are skipped
+- The enforcement loop in `app/retention.py` implements the SQLite audit-DB
+  path. Sources whose backing store is unset or unreachable are skipped
   gracefully.
 
 ---

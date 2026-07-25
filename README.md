@@ -5,7 +5,7 @@
 `bulletproof-compliance-jobs` runs the background jobs a compliance program needs:
 it enforces retention policies, cascades Data Subject Requests (DSR) across data
 stores, and produces tamper-evident audit reports using a Merkle-chained, signed
-log. It's a FastAPI service backed by Postgres.
+log. It's a FastAPI service backed by SQLite.
 
 > 📚 Full documentation in [`docs/`](docs/) · 🔒 security scan in [`docs/scan/scan-report.md`](docs/scan/scan-report.md). (System-overview media coming soon.)
 
@@ -20,14 +20,25 @@ log. It's a FastAPI service backed by Postgres.
 
 ## Run it
 
+Requires **Python 3.12** (matches the Docker base image; the pinned deps do not
+build on newer interpreters).
+
 ```bash
 pip install -r requirements.txt
-# apply migrations, then:
-uvicorn app.main:app --host 0.0.0.0 --port 8087
+cp .env.example .env    # local-run-safe paths; edit to taste
+uvicorn app.main:app --env-file .env --host 0.0.0.0 --port 8087
 ```
 
-Or via Docker (`Dockerfile` included). Postgres connection is configured via env —
-see `app/config.py`.
+Migrations are applied automatically at startup (idempotent, additive — see
+`app/db.py`). Or run via Docker (`Dockerfile` included). Storage is SQLite;
+all paths and endpoints are configured via env — see `app/config.py`.
+
+### Part of the compliance suite
+
+This service consumes audit databases and cascades DSRs produced/handled by its
+sibling projects: [bulletproof-compliance-service](https://github.com/bulletproofsoftware-ai/bulletproof-compliance-service)
+(evidence + signing API) and [bulletproof-compliance-portal](https://github.com/bulletproofsoftware-ai/bulletproof-compliance-portal)
+(reviewer UI). Each runs standalone; together they form the compliance trio.
 
 ## Development
 
