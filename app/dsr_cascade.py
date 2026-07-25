@@ -6,9 +6,11 @@ GDPR erasure flow: receive request → cascade to Qdrant + audit DBs + file arti
 
 from __future__ import annotations
 
+import glob
 import gzip
 import hashlib
 import json
+import re
 import sqlite3
 import uuid
 from contextlib import closing
@@ -114,17 +116,40 @@ def _audit_db_count_references(subject_id: str) -> int:
     return total
 
 
+# A subject id is an opaque identifier, not a pattern. Anything outside this
+# shape is refused rather than interpolated into a glob.
+_SUBJECT_ID_RE = re.compile(r"\A[A-Za-z0-9._@:-]{3,128}\Z")
+
+
 def _file_artifact_purge(subject_id: str) -> int:
-    """Delete subject-tagged files from /var/lib/evidence (best-effort)."""
+    """Delete subject-tagged files from /var/lib/evidence (best-effort).
+
+    subject_id is validated before use because it is interpolated into an
+    rglob pattern. Previously a subject_id of "*" — or any short common
+    substring — matched and deleted evidence belonging to every other data
+    subject, turning one erasure request into mass evidence destruction.
+    Glob metacharacters are also escaped so a literal id is matched literally.
+    """
+    if not isinstance(subject_id, str) or not _SUBJECT_ID_RE.match(subject_id):
+        raise ValueError(f"refusing to purge with unsafe subject_id: {subject_id!r}")
+
     base = Path("/var/lib/evidence")
     if not base.exists():
         return 0
+
+    # Escape glob metacharacters so the id is treated as a literal.
+    literal = glob.escape(subject_id)
+    resolved_base = base.resolve()
     deleted = 0
-    for path in base.rglob(f"*{subject_id}*"):
+    for path in base.rglob(f"*{literal}*"):
         try:
-            if path.is_file():
-                path.unlink()
-                deleted += 1
+            if not path.is_file():
+                continue
+            # Never follow a symlink out of the evidence tree.
+            if resolved_base not in path.resolve().parents:
+                continue
+            path.unlink()
+            deleted += 1
         except OSError:
             continue
     return deleted
@@ -178,6 +203,20 @@ def execute_erasure(request_id: str) -> dict[str, Any]:
         row = conn.execute("SELECT * FROM dsr_cascades WHERE request_id = ?", (request_id,)).fetchone()
         if not row:
             return {"error": "not found"}
+
+    # Only an erasure request may delete data. The DSR types (see app/db.py)
+    # include access, rectification, restriction, portability and objection —
+    # none of which authorise destruction. This function previously ran the
+    # full purge for whatever request_id it was handed, so an access request
+    # erased the very records it was supposed to disclose.
+    request_type = (row["request_type"] or "").strip().lower()
+    if request_type != "erasure":
+        return {
+            "error": "not an erasure request",
+            "request_id": request_id,
+            "request_type": request_type,
+        }
+
     subject_id = row["subject_id"]
 
     qcount = _qdrant_purge(subject_id)

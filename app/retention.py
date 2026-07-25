@@ -23,13 +23,17 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _active_holds() -> list[str]:
-    """Return session_ids currently under legal hold."""
+def _active_holds() -> set[str]:
+    """Return session_ids currently under legal hold.
+
+    A set, not a list: this is membership-tested once per candidate row, and
+    a linear scan per row made hold checking O(rows x holds).
+    """
     with closing(our_connect()) as conn:
         rows = conn.execute(
             "SELECT subject_session_id FROM legal_holds WHERE active = 1"
         ).fetchall()
-        return [r["subject_session_id"] for r in rows if r["subject_session_id"]]
+        return {r["subject_session_id"] for r in rows if r["subject_session_id"]}
 
 
 def _archive_jsonl(records: list[dict[str, Any]], prefix: str) -> Path:
@@ -137,7 +141,12 @@ def _enforce_audit_db(db_path: Path, cutoff_iso: str, holds: list[str]) -> dict[
         held = []
         for r in rows:
             d = dict(r)
-            sid = d.get("session_id")
+            # The governance audit table names this column `audit_session_id`
+            # (see audit_bus.py). Reading only `session_id` returned None for
+            # every governance row, so `sid in holds` was never true and
+            # records under an active legal hold were archived and deleted
+            # anyway. Accept either spelling.
+            sid = d.get("session_id") or d.get("audit_session_id")
             if sid and sid in holds:
                 held.append(d)
             else:
