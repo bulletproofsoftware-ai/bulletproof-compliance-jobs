@@ -29,6 +29,7 @@ verifiers can reproduce the exact byte sequence that was signed.
 from __future__ import annotations
 
 import base64
+import re
 import json
 import logging
 import os
@@ -42,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 PRIVATE_KEY_FILE = "ed25519_private.key"
 PUBLIC_KEY_HEX_FILE = "ed25519_public.key.hex"
+
+# A key id is an opaque identifier, never a path fragment.
+_SAFE_KEY_ID = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
 PUBLIC_KEY_B64_FILE = "ed25519_public.key.b64"
 CURRENT_KEY_ID_FILE = "current_key_id"
 KEY_ID_LENGTH = 16
@@ -224,7 +228,17 @@ def resolve_public_key(key_dir: Path, key_id: str) -> str | None:
         if _key_id_for(current_hex) == key_id:
             return current_hex
 
+    # key_id reaches this function from request parameters, so it must be a
+    # single plain path segment: "../.." would otherwise escape the archive
+    # directory and read an arbitrary PUBLIC_KEY_HEX_FILE from disk.
+    if not _SAFE_KEY_ID.match(key_id or ""):
+        return None
+
     archive_path = key_dir / "archive" / key_id / PUBLIC_KEY_HEX_FILE
+    try:
+        archive_path.resolve().relative_to((key_dir / "archive").resolve())
+    except (ValueError, OSError):
+        return None
     if archive_path.is_file():
         return archive_path.read_text().strip()
 

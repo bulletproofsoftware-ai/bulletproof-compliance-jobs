@@ -14,14 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
+import os
 import sqlite3
 from contextlib import asynccontextmanager, closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -476,6 +478,38 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Compliance Jobs — PRD 18 hardening", version="1.0.0", lifespan=lifespan)
+
+
+# --- Authentication -------------------------------------------------------
+#
+# Every route below was reachable unauthenticated. This service triggers
+# retention runs (which delete audit records), publishes Merkle roots, places
+# and releases legal holds, and executes DSR erasure cascades — all
+# irreversible. Anyone able to reach the port could invoke any of it.
+#
+# Send the token as `Authorization: Bearer <token>` or `X-Compliance-Token`.
+# Unset token => the service refuses everything (fail closed) rather than
+# leaving destructive operations open.
+COMPLIANCE_JOBS_TOKEN = os.environ.get("COMPLIANCE_JOBS_TOKEN", "")
+_PUBLIC_PATHS = {"/health", "/healthz", "/readyz"}
+
+
+@app.middleware("http")
+async def require_compliance_token(request: Request, call_next):
+    if request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+    if not COMPLIANCE_JOBS_TOKEN:
+        return JSONResponse(
+            {"detail": "COMPLIANCE_JOBS_TOKEN is not set; the service refuses requests until it is configured."},
+            status_code=503,
+        )
+    header = request.headers.get("authorization", "")
+    presented = (
+        header[7:] if header.lower().startswith("bearer ") else ""
+    ) or request.headers.get("x-compliance-token", "")
+    if not presented or not hmac.compare_digest(presented, COMPLIANCE_JOBS_TOKEN):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 # --- Health ---
