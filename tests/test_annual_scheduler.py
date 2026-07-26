@@ -19,6 +19,13 @@ from pathlib import Path
 import pytest
 
 
+# The operator API is authenticated (every route but /health*, /readyz), and the
+# service fails closed when no token is configured. Tests therefore have to
+# supply one and present it, the same as any real caller.
+_TEST_TOKEN = "test-compliance-jobs-token"
+_AUTH = {"Authorization": f"Bearer {_TEST_TOKEN}"}
+
+
 # ---------------------------------------------------------------------------
 # Pin every Path Config touches into the per-test tmpdir BEFORE importing
 # any app.* module. Config evaluates env-driven Paths at class definition,
@@ -42,6 +49,7 @@ def _isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("SIGNING_KEY_DIR", str(state / "signing-keys"))
     monkeypatch.setenv("ANNUAL_CHECK_HOURS", "1")
     monkeypatch.setenv("NAIC_POLL_SECONDS", "300")
+    monkeypatch.setenv("COMPLIANCE_JOBS_TOKEN", _TEST_TOKEN)
 
     # Drop any cached Config / app modules so they re-read env
     for mod in list(sys.modules):
@@ -467,6 +475,7 @@ def test_annual_run_now_validation_rejects_unknown_type(_isolated_state: Path) -
         resp = client.post(
             "/annual/run-now",
             json={"report_type": "bogus", "year": 2025},
+            headers=_AUTH,
         )
         assert resp.status_code == 400
 
@@ -479,6 +488,7 @@ def test_annual_run_now_generates_sox(_isolated_state: Path) -> None:
         resp = client.post(
             "/annual/run-now",
             json={"report_type": "sox_attestation", "year": 2025},
+            headers=_AUTH,
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -493,7 +503,7 @@ def test_annual_schedule_lists_three_types(_isolated_state: Path) -> None:
     from app import main
 
     with TestClient(main.app) as client:
-        resp = client.get("/annual/schedule")
+        resp = client.get("/annual/schedule", headers=_AUTH)
         assert resp.status_code == 200
         body = resp.json()
         types = {item["report_type"] for item in body["schedule"]}
@@ -512,13 +522,75 @@ def test_naic_recent_endpoint_returns_window(_isolated_state: Path) -> None:
 
     with TestClient(main.app) as client:
         # Trigger the scan
-        scan = client.post("/naic/scan-now")
+        scan = client.post("/naic/scan-now", headers=_AUTH)
         assert scan.status_code == 200
         assert scan.json()["new_artifacts"] == 1
 
         # Now query the listing endpoint
-        resp = client.get("/naic/recent?days=30")
+        resp = client.get("/naic/recent?days=30", headers=_AUTH)
         assert resp.status_code == 200
         body = resp.json()
         assert body["count"] >= 1
         assert body["actions"][0]["event_type"] == "policy_deny"
+
+
+# ---------------------------------------------------------------------------
+# Operator API authentication (df2b7a0)
+# ---------------------------------------------------------------------------
+
+def test_operator_api_rejects_unauthenticated_calls(_isolated_state: Path) -> None:
+    """Every destructive route was reachable unauthenticated before df2b7a0.
+
+    The suite now sends a token everywhere, so without this test a regression
+    that removed the middleware would go unnoticed — all the other tests would
+    still pass.
+    """
+    from fastapi.testclient import TestClient
+    from app import main
+
+    with TestClient(main.app) as client:
+        for method, path in [
+            ("post", "/annual/run-now"),
+            ("get", "/annual/schedule"),
+            ("post", "/naic/scan-now"),
+            ("get", "/naic/recent?days=30"),
+        ]:
+            kwargs = {"json": {}} if method == "post" else {}
+            resp = getattr(client, method)(path, **kwargs)
+            assert resp.status_code == 401, f"{method.upper()} {path} -> {resp.status_code}"
+
+
+def test_operator_api_rejects_a_wrong_token(_isolated_state: Path) -> None:
+    from fastapi.testclient import TestClient
+    from app import main
+
+    with TestClient(main.app) as client:
+        resp = client.get("/annual/schedule", headers={"Authorization": "Bearer wrong"})
+        assert resp.status_code == 401
+
+
+def test_health_endpoints_stay_public(_isolated_state: Path) -> None:
+    from fastapi.testclient import TestClient
+    from app import main
+
+    with TestClient(main.app) as client:
+        assert client.get("/health").status_code == 200
+
+
+def test_service_fails_closed_when_no_token_is_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unset token must refuse everything (503), not open the API."""
+    monkeypatch.delenv("COMPLIANCE_JOBS_TOKEN", raising=False)
+    monkeypatch.setenv("SQLITE_PATH", str(tmp_path / "cj.sqlite"))
+    for mod in list(sys.modules):
+        if mod.startswith("app.") or mod == "app":
+            del sys.modules[mod]
+
+    from fastapi.testclient import TestClient
+    from app import main
+
+    with TestClient(main.app) as client:
+        resp = client.get("/annual/schedule")
+        assert resp.status_code == 503
+        assert "COMPLIANCE_JOBS_TOKEN is not set" in resp.json()["detail"]
