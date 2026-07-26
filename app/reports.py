@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import uuid
 from contextlib import closing
@@ -18,6 +19,8 @@ from typing import Any
 from .config import Config
 from .db import transaction
 from .signing import canonical_json, get_signing_key, sign_bytes
+
+_SAFE_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
 
 
 def _now() -> datetime:
@@ -137,7 +140,13 @@ def generate_report(report_type: str, period_start: str, period_end: str) -> dic
         "evidence": _gather_evidence(period_start, period_end),
     }
 
-    fname = Config.REPORTS_DIR / f"{report_type}-{report_id}.json"
+    # Both halves land in a filename; reject anything that is not a plain
+    # identifier before touching the filesystem (CodeQL py/path-injection).
+    if not _SAFE_ID_RE.match(str(report_type)) or not _SAFE_ID_RE.match(str(report_id)):
+        raise ValueError("unsafe report identifier")
+    fname = (Config.REPORTS_DIR.resolve() / f"{report_type}-{report_id}.json")
+    if fname.parent != Config.REPORTS_DIR.resolve():
+        raise ValueError("path escapes REPORTS_DIR")
 
     # _sign_artifact computes BOTH SHA-256 (integrity) and Ed25519 (authenticity)
     # over the canonical JSON of the body BEFORE either is embedded, so a verifier

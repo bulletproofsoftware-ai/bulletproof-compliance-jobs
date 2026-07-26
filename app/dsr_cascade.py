@@ -119,6 +119,17 @@ def _audit_db_count_references(subject_id: str) -> int:
 # A subject id is an opaque identifier, not a pattern. Anything outside this
 # shape is refused rather than interpolated into a glob.
 _SUBJECT_ID_RE = re.compile(r"\A[A-Za-z0-9._@:-]{3,128}\Z")
+_SAFE_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
+
+
+def _resolve_within(root, name: str):
+    """Join a single filename under root and prove it stayed there."""
+    from pathlib import Path
+    rr = Path(root).resolve()
+    full = (rr / name).resolve()
+    if full.parent != rr:
+        raise ValueError("path escapes its permitted root")
+    return full
 
 
 def _file_artifact_purge(subject_id: str) -> int:
@@ -157,7 +168,12 @@ def _file_artifact_purge(subject_id: str) -> int:
 
 def _write_confirmation(payload: dict[str, Any]) -> Path:
     Config.DSR_DELETION_CONFIRMATION_DIR.mkdir(parents=True, exist_ok=True)
-    fname = Config.DSR_DELETION_CONFIRMATION_DIR / f"dsr-{payload['request_id']}.json"
+    # request_id reaches a filename; anything but a plain identifier could walk
+    # out of the confirmation directory (CodeQL py/path-injection).
+    _rid = str(payload["request_id"])
+    if not _SAFE_ID_RE.match(_rid):
+        raise ValueError("unsafe request_id")
+    fname = _resolve_within(Config.DSR_DELETION_CONFIRMATION_DIR, f"dsr-{_rid}.json")
     body = json.dumps(payload, indent=2, default=str)
     digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
     payload_with_hash = {**payload, "artifact_sha256": digest}
