@@ -119,7 +119,10 @@ def _audit_db_count_references(subject_id: str) -> int:
 # A subject id is an opaque identifier, not a pattern. Anything outside this
 # shape is refused rather than interpolated into a glob.
 _SUBJECT_ID_RE = re.compile(r"\A[A-Za-z0-9._@:-]{3,128}\Z")
-_SAFE_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
+# Must contain at least one alphanumeric and may not be dots-only: the class
+# permits ".", so "." and ".." would otherwise pass and yield filenames like
+# dsr-..json. Harmless where they are embedded, but not worth relying on.
+_SAFE_ID_RE = re.compile(r"\A(?!\.+\Z)[A-Za-z0-9._-]{1,128}\Z")
 
 
 def _resolve_within(root, name: str):

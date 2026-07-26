@@ -20,7 +20,10 @@ from .config import Config
 from .db import transaction
 from .signing import canonical_json, get_signing_key, sign_bytes
 
-_SAFE_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
+# Must contain at least one alphanumeric and may not be dots-only: the class
+# permits ".", so "." and ".." would otherwise pass and yield filenames like
+# dsr-..json. Harmless where they are embedded, but not worth relying on.
+_SAFE_ID_RE = re.compile(r"\A(?!\.+\Z)[A-Za-z0-9._-]{1,128}\Z")
 
 
 def _now() -> datetime:
