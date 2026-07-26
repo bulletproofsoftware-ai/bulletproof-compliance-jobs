@@ -29,7 +29,6 @@ verifiers can reproduce the exact byte sequence that was signed.
 from __future__ import annotations
 
 import base64
-import re
 import json
 import logging
 import os
@@ -39,13 +38,12 @@ from typing import Any
 from nacl import exceptions as nacl_exc
 from nacl.signing import SigningKey, VerifyKey
 
+from .safe_paths import resolve_within
+
 logger = logging.getLogger(__name__)
 
 PRIVATE_KEY_FILE = "ed25519_private.key"
 PUBLIC_KEY_HEX_FILE = "ed25519_public.key.hex"
-
-# A key id is an opaque identifier, never a path fragment.
-_SAFE_KEY_ID = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
 PUBLIC_KEY_B64_FILE = "ed25519_public.key.b64"
 CURRENT_KEY_ID_FILE = "current_key_id"
 KEY_ID_LENGTH = 16
@@ -231,12 +229,12 @@ def resolve_public_key(key_dir: Path, key_id: str) -> str | None:
     # key_id reaches this function from request parameters, so it must be a
     # single plain path segment: "../.." would otherwise escape the archive
     # directory and read an arbitrary PUBLIC_KEY_HEX_FILE from disk.
-    if not _SAFE_KEY_ID.match(key_id or ""):
-        return None
-
-    archive_path = key_dir / "archive" / key_id / PUBLIC_KEY_HEX_FILE
+    # resolve_within re-checks the segment and proves containment on the
+    # resolved path, so a symlink inside archive/ cannot lead out either.
     try:
-        archive_path.resolve().relative_to((key_dir / "archive").resolve())
+        archive_path = resolve_within(
+            key_dir / "archive", key_id, PUBLIC_KEY_HEX_FILE
+        )
     except (ValueError, OSError):
         return None
     if archive_path.is_file():

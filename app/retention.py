@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import logging
 import sqlite3
 import uuid
 from contextlib import closing
@@ -17,6 +18,8 @@ from typing import Any
 
 from .config import Config
 from .db import connect as our_connect, transaction
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -119,8 +122,13 @@ def _enforce_audit_db(db_path: Path, cutoff_iso: str, holds: list[str]) -> dict[
         return {"db": str(db_path), "skipped": True, "reason": "missing"}
     try:
         conn, can_write = _connect_audit_db(db_path)
-    except sqlite3.OperationalError as exc:
-        return {"db": str(db_path), "skipped": True, "reason": str(exc)}
+    except sqlite3.OperationalError:
+        # The SQLite message names on-disk paths and lock state, and this dict
+        # is returned verbatim from POST /api/retention/run-now. Log the detail
+        # for operators and hand the caller a fixed reason, matching the other
+        # "skipped" branches above and below (CodeQL py/stack-trace-exposure).
+        logger.exception("retention: cannot open audit db %s", db_path)
+        return {"db": str(db_path), "skipped": True, "reason": "unavailable"}
 
     with closing(conn) as c:
         tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]

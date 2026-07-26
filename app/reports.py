@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sqlite3
 import uuid
 from contextlib import closing
@@ -18,13 +17,8 @@ from typing import Any
 
 from .config import Config
 from .db import transaction
+from .safe_paths import is_safe_segment, resolve_within
 from .signing import canonical_json, get_signing_key, sign_bytes
-
-# Must contain at least one alphanumeric and may not be dots-only: the class
-# permits ".", so "." and ".." would otherwise pass and yield filenames like
-# dsr-..json. Harmless where they are embedded, but not worth relying on.
-_SAFE_ID_RE = re.compile(r"\A(?!\.+\Z)[A-Za-z0-9._-]{1,128}\Z")
-
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -144,12 +138,11 @@ def generate_report(report_type: str, period_start: str, period_end: str) -> dic
     }
 
     # Both halves land in a filename; reject anything that is not a plain
-    # identifier before touching the filesystem (CodeQL py/path-injection).
-    if not _SAFE_ID_RE.match(str(report_type)) or not _SAFE_ID_RE.match(str(report_id)):
+    # identifier and prove the result stayed in REPORTS_DIR before touching the
+    # filesystem (CodeQL py/path-injection).
+    if not is_safe_segment(str(report_type)) or not is_safe_segment(str(report_id)):
         raise ValueError("unsafe report identifier")
-    fname = (Config.REPORTS_DIR.resolve() / f"{report_type}-{report_id}.json")
-    if fname.parent != Config.REPORTS_DIR.resolve():
-        raise ValueError("path escapes REPORTS_DIR")
+    fname = resolve_within(Config.REPORTS_DIR, f"{report_type}-{report_id}.json")
 
     # _sign_artifact computes BOTH SHA-256 (integrity) and Ed25519 (authenticity)
     # over the canonical JSON of the body BEFORE either is embedded, so a verifier
