@@ -35,7 +35,7 @@ These are the packages pinned in `requirements.txt`:
 
 | Package | Version | License | Role |
 |---|---|---|---|
-| `fastapi` | 0.115.6 | MIT | Web framework / API surface |
+| `fastapi` | 0.140.7 | MIT | Web framework / API surface |
 | `uvicorn[standard]` | 0.34.0 | BSD-3-Clause | ASGI server |
 | `httpx` | 0.28.1 | BSD-3-Clause | Async HTTP client (external Merkle publish) |
 | `pyyaml` | 6.0.2 | MIT | YAML parsing |
