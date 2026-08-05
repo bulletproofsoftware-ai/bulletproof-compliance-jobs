@@ -5,7 +5,7 @@ httpx==0.28.1
 pyyaml==6.0.2
 jinja2==3.1.6
 pydantic==2.10.4
-cryptography==48.0.1
+cryptography==50.0.0
 qdrant-client==1.12.1
 pynacl>=1.5.0
 psycopg[binary]>=3.2.0
